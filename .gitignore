@@ -1,0 +1,58 @@
+# Distribution / packaging
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+pip-wheel-metadata/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+__pycache__/
+.cache
+.pytest_cache/
+.python-version
+__pypackages__/
+
+# Environments
+.env
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# Local/Internal Directories
+_archive/
+_misc/
+local/
+log/
+target/
+out/
+
+# IDE/Workspace Directories
+.idea/
+.vs/
+.vscode/
+.ws/
+
+# Excluded Files
+*.iml
+*.png
+*.tar.gz
+*.url
+local-env.*
+local.params.config
+.DS_Store
+update-request.txt

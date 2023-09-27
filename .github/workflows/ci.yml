@@ -1,0 +1,316 @@
+name: CI
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - "main"
+      - staging
+      - 'feature/**'
+      - '!ws-iac-scan-results/**'
+      - '!whitesource-remediate/master-all**'
+      - '!whitesource/**'
+    tags:
+      - '*'
+ # schedule:
+ #   - cron: '30 13 * * *'
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+
+    outputs:
+      python_version: ${{ steps.set_env_vars.outputs.PYTHON_VERSION }}
+      min_py_ver: ${{ steps.set_env_vars.outputs.MIN_PY_VER }}
+      version: ${{ steps.set_env_vars.outputs.VERSION }}
+      release: ${{ steps.set_env_vars.outputs.RELEASE }}
+      app_name: ${{ steps.set_env_vars.outputs.APP_NAME }}
+      app_pwd: ${{ steps.set_env_vars.outputs.APP_PWD }}
+      app_dir: ${{ steps.set_env_vars.outputs.APP_DIR }}
+      pkg_name: ${{ steps.set_env_vars.outputs.PKG_NAME }}
+      whl_name: ${{ steps.set_env_vars.outputs.WHL_NAME }}
+      source_branch: ${{ steps.get_source_branch.outputs.SOURCE_BRANCH }}
+
+    strategy:
+      matrix:
+        python-version: ['3.9', '3.10', '3.11']
+
+    steps:
+      - uses: actions/checkout@v3
+      - name: List Tags
+        run: |
+          git fetch --tags
+          git tag -l
+      - name: Set Environment Variables
+        id: set_env_vars
+        env:
+          APP_PWD: '.' # Change this if the app directory and manifest file(s) are not located under the repo root
+        run: |
+          APP_DIR="$(find "${{ env.APP_PWD }}" -maxdepth 1 -type d -path "*mend_*" | sed 's|${{ env.APP_PWD }}/||')"
+          APP_NAME="$APP_DIR" # "$(echo "$APP_DIR" | sed 's/_/-/g')"
+          
+          echo "App directory: $APP_DIR"
+          echo "App name:      $APP_NAME"
+
+          pkgVersion="$(echo "$(cat ${APP_DIR}/_version.py | grep "__version__")" | sed 's/__version__ = "\(.*\)"/\1/')"
+          pkgRelease=false
+
+          echo "========= GITHUB_OUTPUT ========="
+          echo "PYTHON_VERSION=${{ matrix.python-version }}" >> $GITHUB_OUTPUT
+          if [[ ${{ strategy.job-index }} == 0 ]]; then
+            echo "MIN_PY_VER=${{ matrix.python-version }}" >> $GITHUB_OUTPUT
+          fi
+          echo "GitHub Ref: $GITHUB_REF"
+          if [[ "$GITHUB_REF" == *"refs/tags/v"* || "$GITHUB_REF" == *"refs/tags/test-v"* ]]; then
+            pkgVersion="$(echo ${{ github.ref }} | sed -r 's/^[\/a-zA-z-]+//')"
+            if [[ $pkgVersion != *@(a|b)* ]]; then
+              pkgRelease=true
+            fi
+          else
+            echo "get latestver"
+            latestVer="$(git describe --tags $(git rev-list --tags --max-count=1) | sed -r 's/^[\/a-zA-z-]+//')"
+            echo "Last ver: $latestVer"
+           
+            if [[ $(echo "$latestVer" | cut -d. -f1,2) == $(date +"%y.%-m") ]] ; then
+              nextVersion="$(date +"%y.%-m").$(( $(echo "$latestVer" | sed 's/.*\.//') + 1 ))"
+            else
+              nextVersion="$(date +"%y.%-m.1.1")"
+            fi
+            if [[ "$GITHUB_REF" == *"/staging" ]]; then
+              pkgVersion="${nextVersion}rc$(date +"%Y%m%d%H%M")"
+            elif [[ "$GITHUB_REF" == *"/main" ]]; then
+              pkgVersion="${nextVersion}"
+            else
+              pkgVersion="${nextVersion}.dev0"
+            fi
+          fi
+          echo "Package ver: $pkgVersion"
+          echo "VERSION=$pkgVersion" >> $GITHUB_OUTPUT
+          echo "RELEASE=$pkgRelease" >> $GITHUB_OUTPUT
+          echo "APP_NAME=$APP_DIR" >> $GITHUB_OUTPUT
+          echo "APP_PWD=${{ env.APP_PWD }}" >> $GITHUB_OUTPUT
+          echo "APP_DIR=$APP_DIR" >> $GITHUB_OUTPUT
+          echo "PKG_NAME=${APP_NAME}-${pkgVersion}" >> $GITHUB_OUTPUT
+          echo "WHL_NAME=${APP_NAME}-${pkgVersion}-py3-none-any.whl" >> $GITHUB_OUTPUT
+
+          echo "========== GITHUB_ENV ==========="
+          echo "PYTHON_VERSION=${{ matrix.python-version }}" >> $GITHUB_ENV
+          echo "VERSION=$pkgVersion" >> $GITHUB_ENV
+          echo "APP_NAME=$APP_DIR" >> $GITHUB_ENV
+          echo "APP_PWD=${{ env.APP_PWD }}" >> $GITHUB_ENV
+          echo "APP_DIR=$APP_DIR" >> $GITHUB_ENV
+          echo "PKG_NAME=${APP_NAME}-${pkgVersion}" >> $GITHUB_ENV
+          echo "WHL_NAME=${APP_NAME}-${pkgVersion}-py3-none-any.whl" >> $GITHUB_ENV
+
+      - name: Get Source Branch
+        id: get_source_branch
+        working-directory: ${{ env.APP_PWD }}
+        run: |
+          sourceBranch="$(git branch --contains ${{ github.sha }} | grep -E 'feature|staging' | sed 's/[ *]//g')"
+          echo "Source branch: $sourceBranch"
+          echo "SOURCE_BRANCH=$sourceBranch" >> $GITHUB_OUTPUT
+
+      - name: Set Package Version
+        id: set_package_version
+        working-directory: ${{ env.APP_PWD }}
+        run: |
+          sed -E -i  "s/^__version__ = \"[a-z0-9\.]+\"/__version__ = \"${{ env.VERSION }}\"/g" "${{ env.APP_DIR }}/_version.py"
+          cat "${{ env.APP_DIR }}/_version.py"
+
+      - name: Setup Python ${{ matrix.python-version }}
+        id: setup_python
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install Dependencies
+        id: install_dependencies
+        working-directory: ${{ env.APP_PWD }}
+        run: |
+          python -m pip install --upgrade pip
+          pip install flake8 wheel pytest -r requirements.txt
+
+      - name: Lint with flake8
+        id: lint_with_flake8
+        working-directory: ${{ env.APP_PWD }}
+        run: |
+          # stop the build if there are Python syntax errors or undefined names
+          flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics --ignore=E501,F841
+          # exit-zero treats all errors as warnings. The GitHub editor is 127 chars wide
+          flake8 . --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
+
+      - name: Create wheel Package
+        id: create_whl
+        working-directory: ${{ env.APP_PWD }}
+        run: python setup.py bdist_wheel
+
+      - name: Install ${{ env.PKG_NAME }}
+        id: install_whl
+        working-directory: ${{ env.APP_PWD }}
+        run: pip install "dist/${{ env.WHL_NAME }}"
+
+      - name: Check Unit Test Files
+        id: check_test_files
+        uses: andstor/file-existence-action@v2
+        with:
+          files: "*/tests/test_*.py"
+
+          #      - name: Run Tests with pytest
+          # id: tests_pytest
+          # if: steps.check_test_files.outputs.files_exists == 'true'
+          # working-directory: ${{ env.APP_PWD }}
+          # run: pytest
+
+          # - name: Unittest
+          # id: test_unittest
+          # if: steps.check_test_files.outputs.files_exists == 'true'
+          # working-directory: ${{ env.APP_PWD }}
+          # run: python -m unittest
+
+      - name: Copy wheel
+        id: copy_whl
+        working-directory: ${{ env.APP_PWD }}
+        run: |
+          mkdir "dist/${{ env.PYTHON_VERSION }}"
+          cp "dist/${{ env.WHL_NAME }}" "dist/${{ env.PYTHON_VERSION }}/"
+
+      - name: Cache wheel
+        id: cache_whl
+        uses: actions/cache@v3
+        with:
+          path: ${{ env.APP_PWD }}/dist/${{ env.PYTHON_VERSION }}/${{ env.WHL_NAME }}
+          key: ${{ env.PYTHON_VERSION }}_${{ env.APP_DIR }}_${{ github.run_id }}
+
+
+  publish-staging:
+    if: ${{ github.ref == 'refs/heads/staging'}}
+    needs: [build-and-test]
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Get Environment Variables
+        id: get_env_vars
+        run: |
+          echo "MIN_PY_VER=${{ needs.build-and-test.outputs.min_py_ver }}" >> $GITHUB_ENV
+          echo "APP_PWD=${{ needs.build-and-test.outputs.app_pwd }}" >> $GITHUB_ENV
+          echo "APP_DIR=${{ needs.build-and-test.outputs.app_dir }}" >> $GITHUB_ENV
+          echo "VERSION=${{ needs.build-and-test.outputs.version }}" >> $GITHUB_ENV
+          echo "WHL_NAME=${{ needs.build-and-test.outputs.whl_name }}" >> $GITHUB_ENV
+          echo "SOURCE_BRANCH=${{ needs.build-and-test.outputs.source_branch }}" >> $GITHUB_ENV
+          echo "AWS_REGION=eu-west-1" >> $GITHUB_ENV
+          echo "AWS_BUCKET=mend-ps-staging" >> $GITHUB_ENV
+          echo "AWS_DOMAIN=mend-ps" >> $GITHUB_ENV
+          echo "AWS_REPO=mend-ps-staging" >> $GITHUB_ENV
+
+      - name: Restore whl
+        id: restore_whl
+        uses: actions/cache@v3
+        with:
+          path: ${{ env.APP_PWD }}/dist/${{ env.MIN_PY_VER }}/${{ env.WHL_NAME }}
+          key: ${{ env.MIN_PY_VER }}_${{ env.APP_DIR }}_${{ github.run_id }}
+
+      - name: Configure AWS Credentials
+        id: config_aws_creds
+        uses: aws-actions/configure-aws-credentials@v1
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Configure AWS CodeArtifact
+        id: config_aws_codeartifact
+        working-directory: ${{ env.APP_PWD }}
+        run: |
+          pip install twine
+
+          twinePass="$(aws codeartifact get-authorization-token --domain ${{ env.AWS_DOMAIN }} --domain-owner ${{ secrets.AWS_ACCOUNT_ID }} --query authorizationToken --output text)"
+          twineRepo="$(aws codeartifact get-repository-endpoint --domain ${{ env.AWS_DOMAIN }} --domain-owner ${{ secrets.AWS_ACCOUNT_ID }} --repository ${{ env.AWS_REPO }} --format pypi --query repositoryEndpoint --output text)"
+          echo "TWINE_USERNAME=aws" >> $GITHUB_ENV
+          echo "TWINE_PASSWORD=$twinePass" >> $GITHUB_ENV
+          echo "TWINE_REPOSITORY_URL=$twineRepo" >> $GITHUB_ENV
+
+      - name: Upload to AWS CodeArtifact
+        id: upload_aws_codeartifact
+        working-directory: ${{ env.APP_PWD }}
+        run: |
+          twine upload --repository-url ${{ env.TWINE_REPOSITORY_URL }} "dist/${{ env.MIN_PY_VER }}/${{ env.WHL_NAME }}"
+
+      - name: Staging Version Upload Notification (TBD)
+        id: staging_upload_notification
+        working-directory: ${{ env.APP_PWD }}
+        run: |
+          echo "Package is ready for testing"
+          echo "  App Name: ${{ env.APP_NAME }}"
+          echo "  Version:  ${{ env.VERSION }}"
+          echo ""
+          echo "To install, use the commands:"
+          echo '  CODEARTIFACT_AUTH_TOKEN=`aws codeartifact get-authorization-token --domain ${{ env.AWS_DOMAIN }} --domain-owner ${{ secrets.AWS_ACCOUNT_ID }} --region ${{ secrets.AWS_ACCOUNT_ID }} --query authorizationToken --output text`'
+          echo '  pip install --no-cache-dir --index-url=https://aws:$CODEARTIFACT_AUTH_TOKEN@${{ env.AWS_DOMAIN }}-${{ secrets.AWS_ACCOUNT_ID }}.d.codeartifact.${{ secrets.AWS_REGION }}.amazonaws.com/pypi/${{ secrets.AWS_REPO }}/simple/ ${{ env.APP_NAME }}'
+  
+
+  publish-main:
+    if: github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/test')
+    needs: [build-and-test]
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Get Environment Variables
+        id: get_env_vars
+        run: |
+          echo "MIN_PY_VER=${{ needs.build-and-test.outputs.min_py_ver }}" >> $GITHUB_ENV
+          echo "APP_PWD=${{ needs.build-and-test.outputs.app_pwd }}" >> $GITHUB_ENV
+          echo "APP_DIR=${{ needs.build-and-test.outputs.app_dir }}" >> $GITHUB_ENV
+          echo "VERSION=${{ needs.build-and-test.outputs.version }}" >> $GITHUB_ENV
+          echo "WHL_NAME=${{ needs.build-and-test.outputs.whl_name }}" >> $GITHUB_ENV
+          echo "SOURCE_BRANCH=${{ needs.build-and-test.outputs.source_branch }}" >> $GITHUB_ENV
+
+      - name: Restore whl
+        id: restore_whl
+        uses: actions/cache@v3
+        with:
+          path: ${{ env.APP_PWD }}/dist/${{ env.MIN_PY_VER }}/${{ env.WHL_NAME }}
+          key: ${{ env.MIN_PY_VER }}_${{ env.APP_DIR }}_${{ github.run_id }}
+
+      - name: Publish to TestPyPI
+        id: publish_to_test_pypi
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          skip-existing: false
+          user: __token__
+          password: ${{ secrets.TEST_PYPI_API_TOKEN }}
+          packages-dir: dist/${{ needs.build-and-test.outputs.min_py_ver }}
+          repository-url: https://test.pypi.org/legacy/
+          print-hash: true
+
+
+  publish-release:
+    if: ${{ startsWith(github.ref, 'refs/tags/v') }}
+    needs: [build-and-test]
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Get Environment Variables
+        id: get_env_vars
+        run: |
+          echo "MIN_PY_VER=${{ needs.build-and-test.outputs.min_py_ver }}" >> $GITHUB_ENV
+          echo "APP_PWD=${{ needs.build-and-test.outputs.app_pwd }}" >> $GITHUB_ENV
+          echo "APP_DIR=${{ needs.build-and-test.outputs.app_dir }}" >> $GITHUB_ENV
+          echo "VERSION=${{ needs.build-and-test.outputs.version }}" >> $GITHUB_ENV
+          echo "WHL_NAME=${{ needs.build-and-test.outputs.whl_name }}" >> $GITHUB_ENV
+          echo "SOURCE_BRANCH=${{ needs.build-and-test.outputs.source_branch }}" >> $GITHUB_ENV
+
+      - name: Restore whl
+        id: restore_whl
+        uses: actions/cache@v3
+        with:
+          path: ${{ env.APP_PWD }}/dist/${{ env.MIN_PY_VER }}/${{ env.WHL_NAME }}
+          key: ${{ env.MIN_PY_VER }}_${{ env.APP_DIR }}_${{ github.run_id }}
+
+      - name: Publish to PyPI
+        id: publish_to_pypi
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          skip-existing: true
+          user: __token__
+          password: ${{ secrets.PYPI_API_TOKEN }}
+          packages-dir: dist/${{ needs.build-and-test.outputs.min_py_ver }}
+          print-hash: true

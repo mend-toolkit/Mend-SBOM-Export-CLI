@@ -14,8 +14,8 @@ import zipfile
 from concurrent.futures import ThreadPoolExecutor
 from typing import Tuple
 import base64
-from mend_sbom_cli._version import __version__, __tool_name__, __description__
-from mend_sbom_cli.const import aliases, varenvs
+from mend_sbom_export_cli._version import __version__, __tool_name__, __description__
+from mend_sbom_export_cli.const import aliases, varenvs
 
 logger = logging.getLogger(__tool_name__)
 logger.setLevel(logging.DEBUG)

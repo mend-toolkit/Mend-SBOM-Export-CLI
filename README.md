@@ -57,7 +57,7 @@ $ pip install mend-sbom-export-cli
 ## Usage
 **Using command-line arguments only:**
 ```shell
-sbom_export_cli --user-key WS_USERKEY --api-key WS_APIKEY --url $WS_WSS_URL --product `ProductToken1`,`ProductToken2` --project `ProjectToken` --dir $OUTPUT_DIRECTORY
+sbom_export_cli --user-key WS_USERKEY --api-key WS_APIKEY --url $WS_WSS_URL --product ProductToken1,ProductToken2 --project ProjectToken --dir $OUTPUT_DIRECTORY
 ```
 **Using environment variables:**
 ```shell
@@ -65,7 +65,7 @@ export WS_USERKEY=xxxxxxxxxxx
 export WS_APIKEY=xxxxxxxxxxx
 export WS_WSS_URL=https://saas.mend.io
 
-sbom_export_cli --product `ProductToken`
+sbom_export_cli --product ProductToken
 ```
 > **Note:** Either form is accepted. For the rest of the examples, the latter form would be used  
 

@@ -48,7 +48,7 @@ $ pip install mend-sbom-export-cli
 | **&#x2011;&#x2011;project**   | `WS_PROJECTTOKEN` |  `string`  |                       No                       | Empty String <br />(Include all projects). Comma-separated list of Mend Project Tokens that should be included |
 | **&#x2011;&#x2011;exclude**   | `WS_EXCLUDETOKEN` |  `string`  |                       No                       | Empty String <br /> (No exclusions).Commsa-separated list of Mend Project Tokens that should be excluded       |
 | **&#x2011;&#x2011;licensetext** |                   | `bool`   |   No    | Include full license text for all libraries (default: `False`)                                                 |
-| **&#x2011;&#x2011;dir**       |                   | `string` |                       No                       | Output directory for the report files                                                                          |
+| **&#x2011;&#x2011;out**       |                   | `string` |                       No                       | Output directory for the report files                                                                          |
 | **&#x2011;&#x2011;type**      |                   | `string` |   No    | Report format [`spdx` `cdx`] (default: `spdx`)                                                                 | 
 | **&#x2011;&#x2011;threads**   |                   |  `int`   |                       No                       | Number of threads to run in parallel for report generation (default: `10`)                                     |
 
@@ -57,7 +57,7 @@ $ pip install mend-sbom-export-cli
 ## Usage
 **Using command-line arguments only:**
 ```shell
-sbom_export_cli --user-key WS_USERKEY --api-key WS_APIKEY --url $WS_WSS_URL --product ProductToken1,ProductToken2 --project ProjectToken --dir $OUTPUT_DIRECTORY
+sbom_export_cli --user-key WS_USERKEY --api-key WS_APIKEY --url $WS_WSS_URL --product ProductToken1,ProductToken2 --project ProjectToken --out $OUTPUT_DIRECTORY
 ```
 **Using environment variables:**
 ```shell
@@ -76,13 +76,13 @@ sbom_export_cli --product ProductToken
 Create CycloneDx SBOM reports
 
 ```shell
-$ sbom_export_cli --project "$WS_PROJECTTOKEN" --dir $HOME/reports --type cdx
+$ sbom_export_cli --project "$WS_PROJECTTOKEN" --out $HOME/reports --type cdx
 ```
 
 Create SPDX reports
 
 ```shell
-$ sbom_export_cli --product "$WS_PRODUCTTOKEN" --dir $HOME/reports --licensetext True 
+$ sbom_export_cli --product "$WS_PRODUCTTOKEN" --out $HOME/reports --licensetext True 
 ```
 
 ## Other Section

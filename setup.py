@@ -1,5 +1,5 @@
 import setuptools
-from mend_sbom_export_cli._version import __version__, __tool_name__, __description__
+from mend_sbom_cli._version import __version__, __tool_name__, __description__
 
 mend_name = f"mend_{__tool_name__}"
 

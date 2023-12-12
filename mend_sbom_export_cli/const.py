@@ -13,6 +13,7 @@ class aliases(Enum): # List of aliases for params
     exclude = ("--exclude", "-exclude")
     threads = ("--threads", "-threads")
     type = ("--type", "-type")
+    serviceuser = ("--service", "-service")
 
     @classmethod
     def get_aliases_str(cls, key):
@@ -32,12 +33,12 @@ class varenvs(Enum): # Lit of Env.variables
     wsproduct = ("WS_PRODUCTTOKEN", "MEND_PRODUCTTOKEN")
     wsproject = ("WS_PROJECTTOKEN", "MEND_PROJECTTOKEN")
     wsexclude = ("WS_EXCLUDETOKEN", "MEND_EXCLUDETOKEN")
+    serviceuser = ("WS_SERVICEUSER", "MEND_SERVICEUSER")
 
     @classmethod
     def get_env(cls, key):
-        res = ""
         for el_ in cls.__dict__[key].value:
             res = os.environ.get(el_)
             if res:
-                break
-        return res
+                return res
+        return ""

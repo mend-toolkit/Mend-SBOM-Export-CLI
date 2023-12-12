@@ -12,10 +12,7 @@ Generation SBOM reports in the SPDX or CycloneDx formats
 - [Prerequisites](#prerequisites)
 - [Installation](#installation)
 - [Configuration Parameters](#configuration-parameters)
-- [Usage](#usage)
 - [Execution Examples](#execution-examples)
-- [Other Section](#other-section)
-  - [Other Subsection](#other-subsection)
 
 <hr>
 
@@ -38,26 +35,29 @@ $ pip install mend-sbom-export-cli
 > 
 > Command-line arguments take precedence over environment variables.  
 
-| CLI argument                  | Env. Variable     |   Type   |                    Required                    | Description                                                                                                    |
-|:------------------------------|:------------------|:--------:|:----------------------------------------------:|:---------------------------------------------------------------------------------------------------------------|
-| **&#x2011;&#x2011;help**      |                   | `switch` |                       No                       | Show help and exit                                                                                             |
-| **&#x2011;&#x2011;user-key**  | `WS_USERKEY`      | `string` |                      Yes                       | Mend User Key                                                                                                  |
-| **&#x2011;&#x2011;api-key**   | `WS_APIKEY`       | `string` |                      Yes                       | Mend API Key                                                                                                   |
-| **&#x2011;&#x2011;url**       | `WS_WSS_URL`      | `string` |                      Yes                       | Mend Server URL                                                                                                |
-| **&#x2011;&#x2011;product**   | `WS_PRODUCTTOKEN` |  `string`  |                       No                       | Empty String <br />(Include all products). Comma-separated list of Mend Product Tokens that should be included |
-| **&#x2011;&#x2011;project**   | `WS_PROJECTTOKEN` |  `string`  |                       No                       | Empty String <br />(Include all projects). Comma-separated list of Mend Project Tokens that should be included |
-| **&#x2011;&#x2011;exclude**   | `WS_EXCLUDETOKEN` |  `string`  |                       No                       | Empty String <br /> (No exclusions).Commsa-separated list of Mend Project Tokens that should be excluded       |
-| **&#x2011;&#x2011;licensetext** |                   | `bool`   |   No    | Include full license text for all libraries (default: `False`)                                                 |
-| **&#x2011;&#x2011;out**       |                   | `string` |                       No                       | Output directory for the report files                                                                          |
-| **&#x2011;&#x2011;type**      |                   | `string` |   No    | Report format [`spdx` `cdx`] (default: `spdx`)                                                                 | 
-| **&#x2011;&#x2011;threads**   |                   |  `int`   |                       No                       | Number of threads to run in parallel for report generation (default: `10`)                                     |
+| CLI argument                    | Env. Variable     |   Type   | Required | Description                                                                                                    |
+|:--------------------------------|:------------------|:--------:|:--------:|:---------------------------------------------------------------------------------------------------------------|
+| **&#x2011;&#x2011;help**        |                   | `switch` |    No    | Show help and exit                                                                                             |
+| **&#x2011;&#x2011;api-key**     | `WS_APIKEY`       | `string` |   No*    | Mend API Key                                                                                                   |
+| **&#x2011;&#x2011;service**     | `WS_SERVICEUSER`  | `string` |   No*    | Mend Service User email                                                                                        |
+| **&#x2011;&#x2011;user-key**    | `WS_USERKEY`      | `string` |   Yes    | Mend User Key (your own personal user key if Mend API Key provided or user key of service user)                |
+| **&#x2011;&#x2011;url**         | `WS_WSS_URL`      | `string` |   Yes    | Mend Server URL                                                                                                |
+| **&#x2011;&#x2011;product**     | `WS_PRODUCTTOKEN` |  `string`  |   No    | Empty String <br />(Include all products). Comma-separated list of Mend Product Tokens that should be included |
+| **&#x2011;&#x2011;project**     | `WS_PROJECTTOKEN` |  `string`  |   No    | Empty String <br />(Include all projects). Comma-separated list of Mend Project Tokens that should be included |
+| **&#x2011;&#x2011;exclude**     | `WS_EXCLUDETOKEN` |  `string`  |    No    | Empty String <br /> (No exclusions).Commsa-separated list of Mend Project Tokens that should be excluded       |
+| **&#x2011;&#x2011;licensetext** |                   | `bool`   |    No    | Include full license text for all libraries (default: `False`)                                                 |
+| **&#x2011;&#x2011;dir**         |                   | `string` |    No    | Output directory for the report files (default: `current folder`)                                                |
+| **&#x2011;&#x2011;type**        |                   | `string` |    No    | Report format [`spdx` `cdx`] (default: `spdx`)                                                                 | 
+| **&#x2011;&#x2011;threads**     |                   |  `int`   |    No    | Number of threads to run in parallel for report generation (default: `10`)                                     |
 
+`*` One of the parameters must be specified (Api-key or Mend Service User email).  
+The Service User or your user should have the rights to work with the requested org/product/projects.
 
+## Execution Examples
 
-## Usage
 **Using command-line arguments only:**
 ```shell
-sbom_export_cli --user-key WS_USERKEY --api-key WS_APIKEY --url $WS_WSS_URL --product ProductToken1,ProductToken2 --project ProjectToken --out $OUTPUT_DIRECTORY
+sbom_export_cli --user-key WS_USERKEY --api-key WS_APIKEY --url $WS_WSS_URL --product `ProductToken1`,`ProductToken2` --project `ProjectToken` --dir $OUTPUT_DIRECTORY
 ```
 **Using environment variables:**
 ```shell
@@ -65,28 +65,19 @@ export WS_USERKEY=xxxxxxxxxxx
 export WS_APIKEY=xxxxxxxxxxx
 export WS_WSS_URL=https://saas.mend.io
 
-sbom_export_cli --product ProductToken
+sbom_export_cli --product `ProductToken`
 ```
 > **Note:** Either form is accepted. For the rest of the examples, the latter form would be used  
-
-## Execution Examples
-
 > **Note:** In the following examples, $WS_USERKEY, $WS_APIKEY and $WS_WSS_URL are assumed to have been exported as environment variables.  
 
 Create CycloneDx SBOM reports
 
 ```shell
-$ sbom_export_cli --project "$WS_PROJECTTOKEN" --out $HOME/reports --type cdx
+$ sbom_export_cli --project "$WS_PROJECTTOKEN" --dir $HOME/reports --type cdx
 ```
 
 Create SPDX reports
 
 ```shell
-$ sbom_export_cli --product "$WS_PRODUCTTOKEN" --out $HOME/reports --licensetext True 
+$ sbom_export_cli --product "$WS_PRODUCTTOKEN" --dir $HOME/reports --licensetext True 
 ```
-
-## Other Section
-
-### Other Subsection
-Details  
-

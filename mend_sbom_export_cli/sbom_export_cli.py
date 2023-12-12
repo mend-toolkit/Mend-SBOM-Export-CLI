@@ -33,12 +33,15 @@ logger.propagate = False
 
 APP_TITLE = "Mend SBOM Cli"
 API_VERSION = "1.4"
+
 try:
     APP_VERSION = metadata.version(f'mend_{__tool_name__}') if metadata.version(f'mend_{__tool_name__}') else __version__
 except:
     APP_VERSION = __version__
 
 args = None
+PROJECT_PARALLELISM_LEVEL = 0
+lic_texts = {}
 short_lst_prj = []
 token_pattern = r"^[0-9a-zA-Z]{64}$"
 uuid_pattern = r"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
@@ -80,7 +83,7 @@ def check_patterns():
     if not (re.match(uuid_pattern, args.ws_user_key) or re.match(token_pattern, args.ws_user_key)):
         res.append("MEND_USERKEY")
     if not (re.match(uuid_pattern, args.ws_token) or re.match(token_pattern, args.ws_token)):
-        res.append("MEND_APIKEY")
+        res.append("MEND_APIKEY or MEND_SERVICEUSER")
     if args.producttoken:
         prods = args.producttoken.split(",")
         for prod_ in prods:
@@ -126,8 +129,17 @@ def get_project_list():
                  "productToken": product_,
                  })
             try:
-                prj_data = json.loads(call_ws_api(data=data_prj))["projects"]
-                res.extend([{x["projectToken"]: get_prj_name(x["projectToken"])} for x in prj_data])  # x["projectName"]
+                response_ = call_ws_api(data=data_prj)
+                err_code = 0
+                err_msg = ""
+                try:
+                    err_code = json.loads(response_)["errorCode"]
+                    err_msg = json.loads(response_)["errorMessage"]
+                except:
+                    prj_data = json.loads(response_)["projects"]
+                    res.extend([{x["projectToken"]: get_prj_name(x["projectToken"])} for x in prj_data])  # x["projectName"]
+                if err_code != 0:
+                    logger.warning(f"Projects from the product token {product_} were not received. Reason: {err_msg}")
             except Exception as err:
                 pass
     elif not args.projecttoken:
@@ -137,8 +149,17 @@ def get_project_list():
              "orgToken": args.ws_token,
              })
         try:
-            prj_data = json.loads(call_ws_api(data=data_prj))["projectVitals"]
-            res.extend([{x["token"]: get_prj_name(x["token"])} for x in prj_data])  # x["name"]
+            err_code = 0
+            err_msg = ""
+            response_ = call_ws_api(data=data_prj)
+            try:
+                err_code = json.loads(response_)["errorCode"]
+                err_msg = json.loads(response_)["errorMessage"]
+            except:
+                prj_data = json.loads(response_)["projectVitals"]
+                res.extend([{x["token"]: get_prj_name(x["token"])} for x in prj_data])  # x["name"]
+            if err_code != 0:
+                logger.warning(f"Projects from the org token {args.ws_token} were not received. Reason: {err_msg}")
         except:
             pass
 
@@ -183,10 +204,12 @@ def call_ws_api(data, header={"Content-Type": "application/json"}, method="POST"
 
 def parse_args():
     parser = argparse.ArgumentParser(description=__description__)
+    parser.add_argument(*aliases.get_aliases_str("serviceuser"), help="Mend service user email", dest='email',
+                        default=varenvs.get_env("serviceuser"))
     parser.add_argument(*aliases.get_aliases_str("userkey"), help="Mend user key", dest='ws_user_key',
                         default=varenvs.get_env("wsuserkey"), required=not varenvs.get_env("wsuserkey"))
     parser.add_argument(*aliases.get_aliases_str("apikey"), help="Mend API key", dest='ws_token',
-                        default=varenvs.get_env("wsapikey"), required=not varenvs.get_env("wsapikey"))
+                        default=varenvs.get_env("wsapikey"))
     parser.add_argument(*aliases.get_aliases_str("productkey"), help="Mend product scope", dest='producttoken',
                         default=varenvs.get_env("wsproduct"))
     parser.add_argument(*aliases.get_aliases_str("projectkey"), help="Mend project scope", dest='projecttoken',
@@ -417,6 +440,33 @@ def main():
 
         return errors
 
+    def get_apitoken():
+        def login(u_login: str, u_key: str) -> tuple:  # Returns JWT token also, for future migrations to API 2.0/3.0
+            jwt_token = ""
+            orguuid = ""
+            url_ = f"{extract_url(args.ws_url)}/api/v2.0/login".replace("https://","https://api-")
+            payload = json.dumps({
+                "email": u_login,
+                "userKey": u_key,
+            })
+            headers = {
+                'Content-Type': 'application/json'
+            }
+            response = requests.request("POST", url_, headers=headers, data=payload)
+            try:
+                jwt_token = json.loads(response.text)['retVal']['jwtToken']
+                orguuid = json.loads(response.text)['retVal']['orgUuid']
+            except Exception as err:
+                logger.error(f"The authentication failed. Details: {try_or_error(lambda: response.reason, err)}")
+                exit(-1)
+            return jwt_token, orguuid
+
+        if args.email:
+            jwt_token, apitoken = login(args.email, args.ws_user_key)
+            return apitoken
+        else:
+            return ""
+
     def create_spdx(prj_):
         for key, value in prj_.items():
             sbom_prj = create_sbom_prj(token=key)
@@ -451,17 +501,22 @@ def main():
     hdr_title = f'{APP_TITLE} {__version__}'
     hdr = f'\n{len(hdr_title)*"="}\n{hdr_title}\n{len(hdr_title)*"="}'
     print(hdr)
-    PROJECT_PARALLELISM_LEVEL = try_or_error(lambda: int(args.threads), 10)
     try:
         args = parse_args()
-        chp_ = check_patterns()
-        if chp_:
+        args.ws_token = args.ws_token if args.ws_token else get_apitoken()
+        check_res = check_patterns()
+        if check_res:
             logger.error("Missing or malformed configuration parameters:")
-            [logger.error(el_) for el_ in chp_]
+            [logger.error(el_) for el_ in check_res]
             exit(-1)
 
+        PROJECT_PARALLELISM_LEVEL = try_or_error(lambda: int(args.threads), 10)
         logger.info("Starting to create reports...")
         short_lst_prj = get_project_list()
+        if not short_lst_prj:
+            logger.info("No one project was found for the generation report")
+            exit(0)
+
         lic_texts = get_lic_list() if args.lictext.lower() == "true" else {}
         if not os.path.exists(args.out_dir):
             logger.info(f"Dir: {args.out_dir} does not exist. Creating it")

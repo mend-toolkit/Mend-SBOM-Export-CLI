@@ -159,7 +159,7 @@ jobs:
 
       - name: Cache wheel
         id: cache_whl
-        uses: actions/cache@v3
+        uses: actions/cache@v4
         with:
           path: ${{ env.APP_PWD }}/dist/${{ env.PYTHON_VERSION }}/${{ env.WHL_NAME }}
           key: ${{ env.PYTHON_VERSION }}_${{ env.APP_DIR }}_${{ github.run_id }}
@@ -182,7 +182,7 @@ jobs:
 
       - name: Restore whl
         id: restore_whl
-        uses: actions/cache@v3
+        uses: actions/cache@v4
         with:
           path: ${{ env.APP_PWD }}/dist/${{ env.MIN_PY_VER }}/${{ env.WHL_NAME }}
           key: ${{ env.MIN_PY_VER }}_${{ env.APP_DIR }}_${{ github.run_id }}

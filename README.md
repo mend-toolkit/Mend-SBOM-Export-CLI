@@ -22,7 +22,7 @@ Generation SBOM reports in the SPDX or CycloneDx formats
 
 ## Prerequisites
 - Python 3.9+
-- Mend user with admin permissions
+- Mend user with at least Product Admin permissions
 
 ## Installation
 ```
